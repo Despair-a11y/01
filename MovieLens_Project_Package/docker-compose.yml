@@ -1,0 +1,81 @@
+version: '3'
+
+services:
+  # HBase Standalone
+  hbase:
+    image: harisekhon/hbase:latest
+    container_name: hbase
+    hostname: hbase
+    ports:
+      - "16010:16010" # HBase Master UI
+      - "9099:9090"   # Thrift
+      - "2181:2181"   # Zookeeper
+      - "16000:16000" # Master
+      - "16020:16020" # RegionServer
+      - "16030:16030" # RegionServer UI
+    environment:
+      - HBASE_CONF_hbase_regionserver_hostname=hbase
+      - HBASE_CONF_hbase_master_hostname=hbase
+    networks:
+      - movielens-net
+
+  # Spark Master
+  spark-master:
+    build: .
+    container_name: spark-master
+    hostname: spark-master
+    ports:
+      - "8080:8080" # Spark Master UI
+      - "7077:7077" # Spark Master Port
+    environment:
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    volumes:
+      - ./:/app
+    networks:
+      - movielens-net
+
+  # Spark Worker
+  spark-worker:
+    build: .
+    container_name: spark-worker
+    hostname: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    volumes:
+      - ./:/app
+    networks:
+      - movielens-net
+
+  # Streamlit Web App
+  webapp:
+    build: .
+    container_name: webapp
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./:/app
+    working_dir: /app
+    command: streamlit run app.py
+    environment:
+      - HBASE_HOST=hbase
+      - HBASE_PORT=9090
+      - HBASE_ENABLED=true
+      - DATA_SOURCE=hbase
+    networks:
+      - movielens-net
+
+networks:
+  movielens-net:
+    driver: bridge
